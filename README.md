@@ -5,7 +5,7 @@ PHP ve MySQL ile geliştirilmiş basit bir mağaza yönetim uygulaması. Ürün 
 ## Özellikler
 
 - **Ürün listeleme** — arama, kategori filtresi ve sayfalama (sayfa başına 5 ürün)
-- **Sipariş oluşturma** — stok kontrolü, otomatik stok düşme, indirimli fiyat hesaplama
+- **Sipariş oluşturma** — stok kontrolü, otomatik stok düşme, indirimli fiyat hesaplama (transaction ile güvenli)
 - **Sipariş loglama** — her sipariş `logs/siparisler_log.txt` dosyasına kaydedilir
 - **Yönetici paneli** — oturum tabanlı giriş/çıkış
 - **Ürün yönetimi** — ürün ekleme, düzenleme ve silme
@@ -77,7 +77,6 @@ magaza/
 ├── urun_duzenle.php      # Ürün düzenleme (yönetici)
 ├── urun_sil.php          # Ürün silme (yönetici)
 ├── kurulum_admin.php     # Yönetici hesabı oluşturma
-├── basla.php             # Örnek veri seti oluşturma
 ├── layout/               # Ortak header ve footer
 ├── assets/style.css      # Stil dosyası
 ├── database/             # Veritabanı dökümü
@@ -98,7 +97,15 @@ magaza/
 
 ## Güvenlik
 
-- **SQL Injection:** tüm sorgularda PDO prepared statements
-- **XSS:** tüm çıktılarda `htmlspecialchars()`
-- **Şifreler:** `password_hash()` (bcrypt) ve `password_verify()`
-- **Yetkilendirme:** yönetici sayfaları session kontrolü ile korunur
+| Tehdit | Önlem |
+|--------|-------|
+| SQL Injection | Tüm sorgularda PDO prepared statements |
+| XSS | Tüm çıktılarda `htmlspecialchars()` (`e()` yardımcısı) |
+| CSRF | Tüm POST formlarında oturuma bağlı token (`hash_equals` ile doğrulama) |
+| Şifre güvenliği | `password_hash()` (bcrypt) ve `password_verify()` |
+| Session fixation | Girişte `session_regenerate_id(true)`; çerezler `HttpOnly` + `SameSite=Lax` |
+| Yetkisiz erişim | Yönetici sayfaları session kontrolüyle korunur; silme yalnızca POST |
+| Eş zamanlı sipariş | Transaction + `SELECT ... FOR UPDATE` ile stok eksiye düşmez |
+| Kurulum sayfası | İlk yönetici oluşturulduktan sonra `kurulum_admin.php` kilitlenir |
+| Bilgi sızıntısı | Veritabanı hataları kullanıcıya gösterilmez, sunucu loguna yazılır |
+| Log erişimi | `logs/` klasörü web üzerinden erişime kapalı |

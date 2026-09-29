@@ -14,14 +14,14 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/functions.php';
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+oturumBaslat();
 $admin_giris = !empty($_SESSION['admin']);
 
 // ── GET Parametrelerini Oku ────────────────────────────────
 $arama    = trim($_GET['arama']    ?? '');
 $kategori = trim($_GET['kategori'] ?? '');
 $sayfa    = max(1, (int)($_GET['sayfa'] ?? 1));
-$limit    = 5; // sayfa başına kayıt (Soru 6)
+$limit    = 5; // sayfa başına kayıt
 
 // ── Veri Çek ──────────────────────────────────────────────
 $sonuc      = urunListele($arama, $kategori, $sayfa, $limit);
@@ -40,13 +40,13 @@ include __DIR__ . '/layout/header.php';
 <p class="page-sub">Toplam <strong><?= $toplam ?></strong> ürün &nbsp;·&nbsp; Sayfa <?= $sayfa ?> / <?= $sayfa_sayisi ?: 1 ?></p>
 
 <?php if (!empty($_SESSION['mesaj'])): ?>
-  <div class="alert alert-<?= $_SESSION['mesaj_tur'] ?? 'info' ?>">
+  <div class="alert alert-<?= e($_SESSION['mesaj_tur'] ?? 'info') ?>">
     <?= e($_SESSION['mesaj']) ?>
   </div>
   <?php unset($_SESSION['mesaj'], $_SESSION['mesaj_tur']); ?>
 <?php endif; ?>
 
-<!-- ── Arama Formu (GET — Soru 2) ─────────────────────── -->
+<!-- ── Arama Formu (GET) ─────────────────────── -->
 <form method="GET" action="index.php" class="search-bar">
   <!--
     GET kullanım gerekçesi:
@@ -130,9 +130,12 @@ include __DIR__ . '/layout/header.php';
         <?php if ($admin_giris): ?>
         <td>
           <a href="urun_duzenle.php?id=<?= $u['id'] ?>" class="btn btn-secondary btn-sm">✏️ Düzenle</a>
-          <a href="urun_sil.php?id=<?= $u['id'] ?>"
-             class="btn btn-danger btn-sm"
-             onclick="return confirm('Bu ürünü silmek istediğinizden emin misiniz?')">🗑 Sil</a>
+          <form method="POST" action="urun_sil.php" style="display:inline"
+                onsubmit="return confirm('Bu ürünü silmek istediğinizden emin misiniz?')">
+            <?= csrfAlan() ?>
+            <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+            <button type="submit" class="btn btn-danger btn-sm">🗑 Sil</button>
+          </form>
         </td>
         <?php endif; ?>
       </tr>
@@ -141,7 +144,7 @@ include __DIR__ . '/layout/header.php';
   </table>
 </div>
 
-<!-- ── Sayfalama — SORU 6 ──────────────── -->
+<!-- ── Sayfalama ──────────────── -->
 <?php if ($sayfa_sayisi > 1): ?>
 <nav class="pagination">
   <a href="?arama=<?= urlencode($arama) ?>&kategori=<?= urlencode($kategori) ?>&sayfa=<?= max(1, $sayfa - 1) ?>"

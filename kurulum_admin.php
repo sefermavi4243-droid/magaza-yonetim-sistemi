@@ -2,56 +2,66 @@
 /**
  * kurulum_admin.php — Yönetici Hesabı Kurulumu
  *
- * Bu dosyayı YALNIZCA BİR KEZ çalıştırın.
- * Yönetici tablosunu oluşturur ve varsayılan yöneticiyi ekler.
- * Kurulumdan sonra bu dosyayı silin veya erişimi engelleyin.
+ * Yalnızca sistemde hiç yönetici yokken çalışır. İlk hesap oluşturulduktan
+ * sonra sayfa kilitlenir; böylece başkası yeni yönetici ekleyemez veya
+ * mevcut şifreyi değiştiremez.
  *
- * SORU 6 GÜVENLİK:
- *   - Şifre password_hash(PASSWORD_BCRYPT) ile hashlenir.
- *   - Girişte password_verify() kullanılır (login.php).
+ * Şifre password_hash(PASSWORD_BCRYPT) ile hashlenir, girişte password_verify() kullanılır.
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/functions.php';
 
-$mesaj = '';
-$hata  = '';
+oturumBaslat();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $kullanici   = trim($_POST['kullanici']    ?? '');
-    $sifre       = trim($_POST['sifre']        ?? '');
-    $sifre_tekrar= trim($_POST['sifre_tekrar'] ?? '');
+$mesaj   = '';
+$hata    = '';
+$kilitli = false;
 
-    if ($kullanici === '' || $sifre === '') {
+try {
+    $pdo = baglan();
+
+    // Yoksa yönetici tablosunu oluştur
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `yonetici` (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        kullanici_adi VARCHAR(50)  NOT NULL UNIQUE,
+        sifre_hash    VARCHAR(255) NOT NULL,
+        olusturma     DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB");
+
+    $kilitli = (int)$pdo->query('SELECT COUNT(*) FROM yonetici')->fetchColumn() > 0;
+} catch (PDOException $e) {
+    $hata = hataKaydet($e, 'Veritabanına bağlanılamadı.');
+}
+
+if ($kilitli) {
+    http_response_code(403);
+}
+
+if (!$hata && !$kilitli && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $kullanici    = trim($_POST['kullanici']    ?? '');
+    $sifre        = $_POST['sifre']        ?? '';
+    $sifre_tekrar = $_POST['sifre_tekrar'] ?? '';
+
+    if (!csrfGecerli()) {
+        $hata = 'Oturum süresi doldu. Lütfen tekrar deneyin.';
+    } elseif ($kullanici === '' || $sifre === '') {
         $hata = 'Tüm alanları doldurun.';
-    } elseif (strlen($sifre) < 6) {
-        $hata = 'Şifre en az 6 karakter olmalıdır.';
+    } elseif (!preg_match('/^[A-Za-z0-9_.-]{3,50}$/', $kullanici)) {
+        $hata = 'Kullanıcı adı 3-50 karakter olmalı (harf, rakam, _ . -).';
+    } elseif (strlen($sifre) < 8) {
+        $hata = 'Şifre en az 8 karakter olmalıdır.';
     } elseif ($sifre !== $sifre_tekrar) {
         $hata = 'Şifreler eşleşmiyor.';
     } else {
         try {
-            $pdo = baglan();
+            $stmt = $pdo->prepare('INSERT INTO yonetici (kullanici_adi, sifre_hash) VALUES (:k, :h)');
+            $stmt->execute([':k' => $kullanici, ':h' => password_hash($sifre, PASSWORD_BCRYPT)]);
 
-            // Yoksa yönetici tablosunu oluştur 
-            $pdo->exec("CREATE TABLE IF NOT EXISTS `yonetici` (
-                id            INT AUTO_INCREMENT PRIMARY KEY,
-                kullanici_adi VARCHAR(50)  NOT NULL UNIQUE,
-                sifre_hash    VARCHAR(255) NOT NULL,
-                olusturma     DATETIME DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB");
-
-            // SORU 7 password_hash ile şifreyi hashle 
-            $hash = password_hash($sifre, PASSWORD_BCRYPT);
-
-            $stmt = $pdo->prepare(
-                'INSERT INTO yonetici (kullanici_adi, sifre_hash) VALUES (:k, :h)
-                 ON DUPLICATE KEY UPDATE sifre_hash = :h2'
-            );
-            $stmt->execute([':k' => $kullanici, ':h' => $hash, ':h2' => $hash]);
-
-            $mesaj = "Yönetici hesabı oluşturuldu: <strong>" . htmlspecialchars($kullanici) . "</strong><br>"
-                   . "Artık bu dosyayı silin veya erişimi engelleyin!";
+            $mesaj = 'Yönetici hesabı oluşturuldu: <strong>' . e($kullanici) . '</strong><br>'
+                   . 'Bu sayfa artık kilitlidir.';
         } catch (PDOException $e) {
-            $hata = 'Hata: ' . htmlspecialchars($e->getMessage());
+            $hata = hataKaydet($e, 'Hesap oluşturulamadı.');
         }
     }
 }
@@ -85,16 +95,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php if ($mesaj): ?>
     <div class="basari"><?= $mesaj ?></div>
     <a href="login.php">→ Giriş Sayfasına Git</a>
+  <?php elseif ($kilitli): ?>
+    <div class="hata">🔒 Kurulum zaten tamamlanmış. Yönetici hesabı mevcut.</div>
+    <a href="login.php">→ Giriş Sayfasına Git</a>
   <?php elseif ($hata): ?>
     <div class="hata">❌ <?= htmlspecialchars($hata) ?></div>
   <?php endif; ?>
 
-  <?php if (!$mesaj): ?>
+  <?php if (!$mesaj && !$kilitli): ?>
   <form method="POST">
+    <?= csrfAlan() ?>
     <label>Kullanıcı Adı</label>
     <input type="text" name="kullanici" value="<?= htmlspecialchars($_POST['kullanici'] ?? 'admin') ?>" required>
 
-    <label>Şifre (en az 6 karakter)</label>
+    <label>Şifre (en az 8 karakter)</label>
     <input type="password" name="sifre" required>
 
     <label>Şifre Tekrar</label>
@@ -104,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </form>
   <?php endif; ?>
 
-  <p class="not">Bu sayfa yalnızca ilk kurulum içindir. Kurulumdan sonra erişimi engelleyin.</p>
+  <p class="not">Bu sayfa yalnızca ilk kurulum içindir; yönetici oluşturulduktan sonra otomatik kilitlenir.</p>
 </div>
 </body>
 </html>

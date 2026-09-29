@@ -1,9 +1,12 @@
 <?php
 /**
- * SORU 4 logout.php — Oturum Kapatma 
+ * logout.php — Oturum Kapatma
  * Session'ı tamamen temizler ve giriş sayfasına yönlendirir.
  */
-session_start();
+require_once __DIR__ . '/functions.php';
+
+oturumBaslat();
+$_SESSION = [];
 session_unset();
 session_destroy();
 

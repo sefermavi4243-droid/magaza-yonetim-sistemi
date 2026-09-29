@@ -1,7 +1,6 @@
 <?php
 /**
- * functions.php — Kullanıcı Tanımlı Fonksiyonlar SORU 3
- * Tüm iş mantığı fonksiyonları burada toplanmıştır.
+ * functions.php — Yardımcı ve iş mantığı fonksiyonları
  */
 
 require_once __DIR__ . '/config.php';
@@ -131,7 +130,7 @@ function tumKategoriler(): array {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Yardımcı: Sipariş log dosyasına kayıt ekler SORU 4
+//  Yardımcı: Sipariş log dosyasına kayıt ekler
 // ─────────────────────────────────────────────────────────────
 function siparisLogYaz(string $musteri, float $toplam, string $urun_adi): void {
     $log_dir  = __DIR__ . '/logs';
@@ -163,7 +162,7 @@ function e(string $str): string {
 //  Yardımcı: Oturum kontrolü — Yönetici değilse yönlendir
 // ─────────────────────────────────────────────────────────────
 function adminKontrol(): void {
-    if (session_status() === PHP_SESSION_NONE) session_start();
+    oturumBaslat();
     if (empty($_SESSION['admin'])) {
         header('Location: login.php');
         exit;
@@ -179,4 +178,50 @@ function fiyataGoreSirala(array &$urunler, bool $artanSira = true): void {
             ? $a['fiyat'] <=> $b['fiyat']
             : $b['fiyat'] <=> $a['fiyat'];
     });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Güvenlik: Oturum, CSRF ve hata yönetimi
+// ─────────────────────────────────────────────────────────────
+
+/** Güvenli çerez ayarlarıyla oturumu başlatır. */
+function oturumBaslat(): void {
+    if (session_status() !== PHP_SESSION_NONE) return;
+    ini_set('session.use_strict_mode', '1');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    ]);
+    session_start();
+}
+
+/** Oturuma ait CSRF token'ını döndürür (yoksa üretir). */
+function csrfToken(): string {
+    oturumBaslat();
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/** Formlara eklenecek gizli CSRF alanı. */
+function csrfAlan(): string {
+    return '<input type="hidden" name="csrf_token" value="' . e(csrfToken()) . '">';
+}
+
+/** POST isteğindeki CSRF token'ını doğrular. */
+function csrfGecerli(): bool {
+    oturumBaslat();
+    $gelen = $_POST['csrf_token'] ?? '';
+    return is_string($gelen) && !empty($_SESSION['csrf_token'])
+        && hash_equals($_SESSION['csrf_token'], $gelen);
+}
+
+/** Hatayı sunucu loguna yazar, kullanıcıya genel bir mesaj döndürür. */
+function hataKaydet(Throwable $e, string $mesaj = 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.'): string {
+    error_log('[magaza] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    return $mesaj;
 }

@@ -1,6 +1,6 @@
 <?php
 /**
- * soru 4-6 siparisler.php — Sipariş Listesi 
+ * siparisler.php — Sipariş Listesi
  * Sadece giriş yapmış yönetici erişebilir.
  */
 
@@ -33,7 +33,8 @@ try {
     $siparisler = $stmt->fetchAll();
 
 } catch (PDOException $e) {
-    die('Hata: ' . e($e->getMessage()));
+    http_response_code(500);
+    exit(e(hataKaydet($e, 'Siparişler yüklenemedi.')));
 }
 
 $sayfa_basligi = 'Sipariş Listesi — Mağaza';

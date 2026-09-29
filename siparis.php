@@ -1,27 +1,26 @@
 <?php
 /**
- * SORU 2-3-6  siparis.php — Sipariş Oluşturma 
+ * siparis.php — Sipariş Oluşturma
  *
- * HTTP POST kullanımı:
- *   Sipariş veritabanına yazılır ve stok azaltılır — yan etkili işlem.
- *   Bu tür işlemler için HTTP standardı POST kullanımını zorunlu kılar.
- *   Ayrıca müşteri adı, adet gibi form alanları URL'de görünmemelidir.
+ * Sipariş kaydı ve stok düşümü tek bir transaction içinde yapılır;
+ * ürün satırı FOR UPDATE ile kilitlenerek eş zamanlı siparişlerde
+ * stoğun eksiye düşmesi engellenir.
  */
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/functions.php';
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+oturumBaslat();
 
 $hatalar = [];
 $basari  = '';
 
-// Tüm ürünleri listele 
+// Tüm ürünleri listele
 try {
-    $pdo        = baglan();
+    $pdo          = baglan();
     $urun_listesi = $pdo->query('SELECT id, ad, kategori, fiyat, stok, indirim FROM urunler ORDER BY ad')->fetchAll();
 } catch (PDOException $e) {
-    $hatalar[] = 'Ürünler yüklenemedi: ' . e($e->getMessage());
+    $hatalar[]    = hataKaydet($e, 'Ürünler yüklenemedi.');
     $urun_listesi = [];
 }
 
@@ -30,72 +29,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $urun_id = (int)($_POST['urun_id'] ?? 0);
     $adet    = (int)($_POST['adet']   ?? 0);
 
-    // ── If-Else Form Doğrulama (Soru 2) ──────────────────
+    if (!csrfGecerli()) {
+        $hatalar[] = 'Oturum süresi doldu. Lütfen sayfayı yenileyip tekrar deneyin.';
+    }
+
+    // Form doğrulama
     if ($musteri === '') {
         $hatalar[] = 'Müşteri adı boş bırakılamaz.';
     } elseif (mb_strlen($musteri) < 2) {
         $hatalar[] = 'Müşteri adı en az 2 karakter olmalıdır.';
+    } elseif (mb_strlen($musteri) > 100) {
+        $hatalar[] = 'Müşteri adı en fazla 100 karakter olabilir.';
     }
 
     if ($urun_id <= 0) {
         $hatalar[] = 'Lütfen bir ürün seçin.';
     }
 
-    // Sayısal kontrol
-    if (!is_numeric($_POST['adet'] ?? '') || $adet <= 0) {
-        $hatalar[] = 'Adet pozitif bir sayı olmalıdır.';
-    }
-
-    // SORU 3 Stok yeterlilik kontrolü — stokKontrol() fonksiyonu 
-    if (empty($hatalar)) {
-        if (!stokKontrol($urun_id, $adet)) {
-            $hatalar[] = 'Seçilen ürün için yeterli stok bulunmuyor.';
-        }
+    if (!ctype_digit((string)($_POST['adet'] ?? '')) || $adet <= 0) {
+        $hatalar[] = 'Adet pozitif bir tam sayı olmalıdır.';
     }
 
     if (empty($hatalar)) {
         try {
-            // Ürün bilgisini getir
-            $stmt = $pdo->prepare('SELECT * FROM urunler WHERE id = :id');
+            $pdo->beginTransaction();
+
+            // Ürünü kilitle — transaction bitene kadar başka sipariş bu satırı değiştiremez
+            $stmt = $pdo->prepare('SELECT * FROM urunler WHERE id = :id FOR UPDATE');
             $stmt->execute([':id' => $urun_id]);
             $urun = $stmt->fetch();
 
-            // SORU 3 Fiyat hesapla — fonksiyonlar 
-            $birim_fiyat = indirimUygula((float)$urun['fiyat'], (int)$urun['indirim']);
-            $toplam      = fiyatHesapla($birim_fiyat, $adet);
+            if (!$urun) {
+                $pdo->rollBack();
+                $hatalar[] = 'Seçilen ürün bulunamadı.';
+            } elseif ((int)$urun['stok'] < $adet) {
+                $pdo->rollBack();
+                $hatalar[] = 'Seçilen ürün için yeterli stok bulunmuyor.';
+            } else {
+                $birim_fiyat = indirimUygula((float)$urun['fiyat'], (int)$urun['indirim']);
+                $toplam      = fiyatHesapla($birim_fiyat, $adet);
 
-            // SORU 7 Siparişi kaydet — PDO Prepared Statement 
-            $ins = $pdo->prepare(
-                'INSERT INTO siparisler (musteri_adi, urun_id, adet, toplam)
-                 VALUES (:musteri, :urun_id, :adet, :toplam)'
-            );
-            $ins->execute([
-                ':musteri' => $musteri,
-                ':urun_id' => $urun_id,
-                ':adet'    => $adet,
-                ':toplam'  => $toplam,
-            ]);
+                $ins = $pdo->prepare(
+                    'INSERT INTO siparisler (musteri_adi, urun_id, adet, toplam)
+                     VALUES (:musteri, :urun_id, :adet, :toplam)'
+                );
+                $ins->execute([
+                    ':musteri' => $musteri,
+                    ':urun_id' => $urun_id,
+                    ':adet'    => $adet,
+                    ':toplam'  => $toplam,
+                ]);
 
-            // SORU 6 Stoku güncelle
-            $upd = $pdo->prepare('UPDATE urunler SET stok = stok - :adet WHERE id = :id');
-            $upd->execute([':adet' => $adet, ':id' => $urun_id]);
+                $upd = $pdo->prepare('UPDATE urunler SET stok = stok - :adet WHERE id = :id');
+                $upd->execute([':adet' => $adet, ':id' => $urun_id]);
 
-            // Log dosyasına yaz (Soru 4)
-            siparisLogYaz($musteri, $toplam, $urun['ad']);
+                $pdo->commit();
 
-            $basari = sprintf(
-                'Sipariş alındı! Müşteri: %s | Ürün: %s | Adet: %d | Toplam: ₺%s',
-                e($musteri),
-                e($urun['ad']),
-                $adet,
-                number_format($toplam, 2, '.', ',')
-            );
+                siparisLogYaz($musteri, $toplam, $urun['ad']);
 
-            // Ürün listesini yenile
-            $urun_listesi = $pdo->query('SELECT id, ad, kategori, fiyat, stok, indirim FROM urunler ORDER BY ad')->fetchAll();
+                $basari = sprintf(
+                    'Sipariş alındı! Müşteri: %s | Ürün: %s | Adet: %d | Toplam: ₺%s',
+                    e($musteri),
+                    e($urun['ad']),
+                    $adet,
+                    number_format($toplam, 2, '.', ',')
+                );
+                $_POST = [];
 
+                // Ürün listesini yenile
+                $urun_listesi = $pdo->query('SELECT id, ad, kategori, fiyat, stok, indirim FROM urunler ORDER BY ad')->fetchAll();
+            }
         } catch (PDOException $e) {
-            $hatalar[] = 'Sipariş kaydedilemedi: ' . e($e->getMessage());
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $hatalar[] = hataKaydet($e, 'Sipariş kaydedilemedi. Lütfen tekrar deneyin.');
         }
     }
 }
@@ -128,6 +134,7 @@ include __DIR__ . '/layout/header.php';
     <h2 class="card-title">Sipariş Formu</h2>
 
     <form method="POST" action="siparis.php" id="siparis-form">
+      <?= csrfAlan() ?>
       <div class="form-group">
         <label for="musteri">Müşteri Adı *</label>
         <input type="text" id="musteri" name="musteri" class="form-control"

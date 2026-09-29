@@ -1,9 +1,7 @@
 <?php
 /**
- * SORU 6 urun_ekle.php — Ürün Ekleme 
- *
- * SORU 4 Sadece giriş yapmış yönetici erişebilir .
- * POST metodu kullanılır; ürün veritabanına eklenir.
+ * urun_ekle.php — Ürün Ekleme
+ * Sadece giriş yapmış yönetici erişebilir; POST ile ürün veritabanına eklenir.
  */
 
 require_once __DIR__ . '/config.php';
@@ -20,7 +18,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stok    = trim($_POST['stok']    ?? '');
     $indirim = trim($_POST['indirim'] ?? '0');
 
-    // ── SORU 2 If-Else ve Switch ile Form Doğrulama ───
+    // ── Form Doğrulama ───
+    if (!csrfGecerli()) {
+        $hatalar[] = 'Oturum süresi doldu. Lütfen tekrar deneyin.';
+    }
+
     if ($ad === '') {
         $hatalar[] = 'Ürün adı boş bırakılamaz.';
     } elseif (mb_strlen($ad) < 3) {
@@ -55,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($hatalar)) {
         try {
             $pdo  = baglan();
-            // SORU 7 PDO Prepared Statement — SQL Injection önleme 
+            // PDO Prepared Statement — SQL Injection önleme
             $stmt = $pdo->prepare(
                 'INSERT INTO urunler (ad, kategori, fiyat, stok, indirim)
                  VALUES (:ad, :kat, :fiyat, :stok, :indirim)'
@@ -73,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php');
             exit;
         } catch (PDOException $e) {
-            $hatalar[] = 'Veritabanı hatası: ' . e($e->getMessage());
+            $hatalar[] = hataKaydet($e, 'Ürün eklenemedi.');
         }
     }
 }
@@ -106,6 +108,7 @@ include __DIR__ . '/layout/header.php';
     Ayrıca büyük form verileri GET'te URL uzunluğu sınırını aşabilir.
   -->
   <form method="POST" action="urun_ekle.php">
+    <?= csrfAlan() ?>
     <div class="form-group">
       <label for="ad">Ürün Adı *</label>
       <input type="text" id="ad" name="ad" class="form-control"

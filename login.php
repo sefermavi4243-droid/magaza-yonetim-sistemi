@@ -1,6 +1,12 @@
 <?php
-session_start();
+/**
+ * login.php — Yönetici Girişi
+ */
+
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/functions.php';
+
+oturumBaslat();
 
 if (!empty($_SESSION['admin'])) {
     header('Location: index.php');
@@ -13,10 +19,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $kullanici = trim($_POST['kullanici'] ?? '');
     $sifre     = trim($_POST['sifre']     ?? '');
 
-    if ($kullanici === '') {
-        $hata = 'Kullanici adi bos birakilamaz.';
+    if (!csrfGecerli()) {
+        $hata = 'Oturum süresi doldu. Lütfen tekrar deneyin.';
+    } elseif ($kullanici === '') {
+        $hata = 'Kullanıcı adı boş bırakılamaz.';
     } elseif ($sifre === '') {
-        $hata = 'Sifre bos birakilamaz.';
+        $hata = 'Şifre boş bırakılamaz.';
     } else {
         try {
             $pdo  = baglan();
@@ -25,34 +33,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $row  = $stmt->fetch();
 
             if ($row && password_verify($sifre, $row['sifre_hash'])) {
+                // Oturum sabitleme (session fixation) saldırısına karşı yeni ID
+                session_regenerate_id(true);
+                unset($_SESSION['csrf_token']);
                 $_SESSION['admin']    = $kullanici;
                 $_SESSION['giris_ts'] = time();
                 header('Location: index.php');
                 exit;
             } else {
-                $hata = 'Kullanici adi veya sifre hatali.';
+                $hata = 'Kullanıcı adı veya şifre hatalı.';
             }
         } catch (PDOException $e) {
-            $hata = 'Veritabani hatasi: ' . htmlspecialchars($e->getMessage());
+            $hata = hataKaydet($e, 'Giriş şu anda yapılamıyor. Lütfen daha sonra tekrar deneyin.');
         }
     }
 }
 
-$sayfa_basligi = 'Yonetici Girisi';
+$sayfa_basligi = 'Yönetici Girişi';
 include __DIR__ . '/layout/header.php';
 ?>
 
 <div class="login-wrap">
   <div class="card">
-    <h2 class="card-title">Yonetici Girisi</h2>
+    <h2 class="card-title">Yönetici Girişi</h2>
 
     <?php if ($hata): ?>
       <div class="alert alert-danger"><?= htmlspecialchars($hata) ?></div>
     <?php endif; ?>
 
     <form method="POST" action="login.php">
+      <?= csrfAlan() ?>
       <div class="form-group">
-        <label for="kullanici">Kullanici Adi</label>
+        <label for="kullanici">Kullanıcı Adı</label>
         <input type="text"
                id="kullanici"
                name="kullanici"
@@ -63,7 +75,7 @@ include __DIR__ . '/layout/header.php';
       </div>
 
       <div class="form-group">
-        <label for="sifre">Sifre</label>
+        <label for="sifre">Şifre</label>
         <input type="password"
                id="sifre"
                name="sifre"
@@ -72,11 +84,11 @@ include __DIR__ . '/layout/header.php';
                required>
       </div>
 
-      <button type="submit" class="btn btn-primary" style="width:100%">Giris Yap</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Giriş Yap</button>
     </form>
 
     <p style="font-size:13px;color:var(--warm);margin-top:16px;text-align:center">
-      Henuz hesap olusturmadiysan:
+      Henüz hesap oluşturmadıysan:
       <a href="kurulum_admin.php">kurulum_admin.php</a>
     </p>
   </div>

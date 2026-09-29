@@ -1,6 +1,7 @@
 # Sipariş logları (çalışma zamanı verisi)
 logs/*
 !logs/.gitkeep
+!logs/.htaccess
 
 # IDE / OS
 .vscode/

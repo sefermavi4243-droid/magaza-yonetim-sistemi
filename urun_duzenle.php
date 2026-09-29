@@ -1,6 +1,6 @@
 <?php
 /**
- * SORU 6 urun_duzenle.php — Ürün Güncelleme 
+ * urun_duzenle.php — Ürün Güncelleme
  * Sadece giriş yapmış yönetici erişebilir.
  */
 
@@ -19,7 +19,7 @@ try {
     $stmt->execute([':id' => $id]);
     $urun = $stmt->fetch();
 } catch (PDOException $e) {
-    $hatalar[] = 'Veritabanı hatası: ' . e($e->getMessage());
+    $hatalar[] = hataKaydet($e, 'Ürün bilgisi alınamadı.');
 }
 
 if (!$urun && empty($hatalar)) {
@@ -37,7 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stok    = trim($_POST['stok']     ?? '');
     $indirim = trim($_POST['indirim']  ?? '0');
 
-    // Doğrulama (if-else)
+    // Doğrulama
+    if (!csrfGecerli())          $hatalar[] = 'Oturum süresi doldu. Lütfen tekrar deneyin.';
     if ($ad === '')              $hatalar[] = 'Ürün adı boş olamaz.';
     if ($kategori === '')        $hatalar[] = 'Kategori seçilmedi.';
     if (!is_numeric($fiyat) || (float)$fiyat <= 0)
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($hatalar)) {
         try {
-            // PDO Prepared Statement (Soru 7)
+            // PDO Prepared Statement
             $upd = $pdo->prepare(
                 'UPDATE urunler SET ad=:ad, kategori=:kat, fiyat=:fiyat,
                  stok=:stok, indirim=:indirim WHERE id=:id'
@@ -68,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php');
             exit;
         } catch (PDOException $e) {
-            $hatalar[] = 'Güncelleme hatası: ' . e($e->getMessage());
+            $hatalar[] = hataKaydet($e, 'Ürün güncellenemedi.');
         }
     }
 
@@ -102,6 +103,7 @@ include __DIR__ . '/layout/header.php';
   <h2 class="card-title">Ürün Bilgilerini Güncelle</h2>
 
   <form method="POST" action="urun_duzenle.php?id=<?= $id ?>">
+    <?= csrfAlan() ?>
     <div class="form-group">
       <label for="ad">Ürün Adı *</label>
       <input type="text" id="ad" name="ad" class="form-control"
