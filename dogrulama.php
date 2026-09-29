@@ -13,10 +13,7 @@ session_start();
 // Bu satırı kendi session değişkeninize göre uyarlayın:
 // if (!isset($_SESSION['admin'])) { header('Location: login.php'); exit; }
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'magaza_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+require_once __DIR__ . '/config.php';
 
 // ──────────────────────────────────────────────
 //  DOĞRULAMA KODU HESAPLAMA ALGORİTMASI

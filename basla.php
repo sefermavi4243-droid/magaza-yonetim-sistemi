@@ -12,11 +12,7 @@
 //  VERİTABANI BAĞLANTI BİLGİLERİ (config.php)
 //  Öğrenci: bu kısmı kendi config.php dosyanıza taşıyın!
 // ──────────────────────────────────────────────
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'magaza_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
+require_once __DIR__ . '/config.php';
 
 // ──────────────────────────────────────────────
 //  SEED FONKSİYONU — DEĞİŞTİRMEYİN

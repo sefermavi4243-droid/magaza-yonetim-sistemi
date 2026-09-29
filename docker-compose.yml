@@ -1,0 +1,52 @@
+services:
+  app:
+    build: .
+    container_name: magaza_app
+    ports:
+      - "${APP_PORT:-8080}:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-magaza_db}
+      DB_USER: ${DB_USER:-magaza}
+      DB_PASS: ${DB_PASS:-magaza123}
+    volumes:
+      - logs:/var/www/html/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10.11
+    container_name: magaza_db
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-magaza_db}
+      MARIADB_USER: ${DB_USER:-magaza}
+      MARIADB_PASSWORD: ${DB_PASS:-magaza123}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS:-root123}
+      TZ: Europe/Istanbul
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_turkish_ci
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin:5
+    container_name: magaza_pma
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    environment:
+      PMA_HOST: db
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  logs:
